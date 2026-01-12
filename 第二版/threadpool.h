@@ -14,7 +14,7 @@
 #include <unordered_map>
 #include <future>
 
-const int TASK_MAX_THRESHHOLD = 4;
+const int TASK_MAX_THRESHHOLD = 4;   //任务队列任务个数上限
 const int THREAD_MAX_THRESHHOLD = 1024;
 const int THREAD_MAX_IDLE_TIME = 60;  //线程最大空闲时间，单位秒
 
@@ -30,8 +30,6 @@ class Thread
 {
 public:
 	using ThreadFunc = std::function<void(int)>;
-
-
 
 	Thread(ThreadFunc func)
 		:func_(func)    //获取bind返回的函数对象，即threadpool中定义的线程函数
@@ -53,14 +51,16 @@ public:
 	{
 		return threadId_;
 	}//获取线程id//获取线程id
+
 private:
 	static int generateId_;
-	ThreadFunc func_;
+	ThreadFunc func_;  //函数对象类型
 	int threadId_;
 };
+int Thread::generateId_ = 0;   //类外初始化静态变量
 
 
-int Thread::generateId_ = 0;
+
 //线程池类型
 class ThreadPool
 {
@@ -116,17 +116,16 @@ public:
 
 
 
-
-
+	//可变参模板,接收任意参数类型个数 
 	template<typename Func, typename...Args>
-	auto submitTask(Func&& func, Args&&... args)->std::future<decltype(func(args...))>
+	auto submitTask(Func&& func, Args&&... args)->std::future<decltype(func(args...))>  //T&&万能引用类型
 	{
 		using RType = decltype(func(args...));
-		//封装成
+		//bind消除参数
 		auto task = std::make_shared<std::packaged_task<RType()>>
-			(std::bind(std::forward<Func>(func), std::forward<Args>(args)...));
+			(std::bind(std::forward<Func>(func), std::forward<Args>(args)...));  //参数展开，不是折叠表达式！！！
 		std::future<RType> result = task->get_future();
-
+                
 		//获取锁
 		std::unique_lock<std::mutex> lock(taskQueMtx_);
 		//等待任务队列右空余,超过一秒钟返回失败
@@ -141,7 +140,7 @@ public:
 			return task->get_future();
 		};
 		//提交任务
-		taskQue_.emplace([task]() {(*task)(); });
+		taskQue_.emplace([task]() {(*task)(); });  //通过添加一个中间层,消除返回值类型
 		taskSize_++;
 		notEmpty_.notify_all();
 
@@ -157,21 +156,10 @@ public:
 
 			threads_[threadid]->start();   //启动线程
 			curThreadSize_++;           //当前以及空闲线程加一
-			idleThreadSize_++;
+			idleThreadSize_++; 
 		}
 		return result;  //返回result对象
 	};   //用户提交任务接口
-
-
-
-
-
-
-
-
-
-
-
 
 
 	void start(int initThreadSize)
@@ -196,9 +184,6 @@ public:
 		}
 	};//开启线程池
 	//关闭拷贝构造函数
-
-
-
 
 
 	ThreadPool(const ThreadPool&) = delete;
@@ -285,30 +270,6 @@ private:
 			lastTime = std::chrono::high_resolution_clock().now();
 		}
 	}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 	bool checkRunningState() const
 	{
